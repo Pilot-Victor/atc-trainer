@@ -332,26 +332,43 @@ function pickVoice(){
       || vs.find(v=>/en[-_]US/i.test(v.lang))
       || vs.find(v=>/^en/i.test(v.lang)) || null;
 }
+function voiceCandidates(){
+  const vs=(window.speechSynthesis.getVoices()||[]);
+  const byName=re=>vs.find(v=>re.test(v.name));
+  const raw=[
+    byName(/Samantha/i), byName(/^Alex$/i), byName(/Google US English/i),
+    vs.find(v=>/en[-_]US/i.test(v.lang)&&v.localService),
+    byName(/Daniel|Karen|Moira|Tessa|Rishi|Eloquence|Grandpa|Fred|Victoria/i),
+    vs.find(v=>/^en/i.test(v.lang)),
+    null,                                  // 시스템 기본
+  ];
+  const seen=new Set(), out=[];
+  for(const v of raw){ if(v===undefined) continue; const k=v?v.name:'__d'; if(!seen.has(k)){seen.add(k);out.push(v);} }
+  return out;
+}
 function speak(text){
   return new Promise(res=>{
     const ss=window.speechSynthesis;
     if(!ss || !text){ res(); return; }
-    let started=false, retried=false, ka=null;
-    const fin=()=>{ if(ka){clearInterval(ka);ka=null;} res(); };
-    const build=()=>{
-      const u=new SpeechSynthesisUtterance(text); u.lang="en-US"; u.rate=0.95;
-      const v=pickVoice(); if(v) u.voice=v;
-      u.onstart=()=>{ started=true; };
-      u.onend=fin; u.onerror=fin;
-      window._cur=u;                                  // GC 방지
-      return u;
+    const cands=voiceCandidates();
+    let i=0, started=false, ka=null, watch=null;
+    const fin=()=>{ if(ka){clearInterval(ka);ka=null;} if(watch){clearTimeout(watch);watch=null;} res(); };
+    const tryNext=()=>{
+      if(started) return;
+      if(watch){ clearTimeout(watch); watch=null; }
+      if(i>=cands.length){ fin(); return; }                 // 후보 소진 → 종료
+      const v=cands[i++];
+      const u=new SpeechSynthesisUtterance(text); u.lang="en-US"; u.rate=0.95; if(v) u.voice=v;
+      u.onstart=()=>{ started=true; window._spokeVoice=v?v.name:'기본'; };
+      u.onend=fin;
+      u.onerror=()=>{ if(!started) tryNext(); };
+      window._cur=u;
+      if(ss.speaking||ss.pending){ try{ss.cancel();}catch(e){} }   // 막힌 음성 비우기(필요 시만)
+      ss.speak(u); try{ ss.resume(); }catch(e){}
+      watch=setTimeout(()=>{ if(!started) tryNext(); }, 700);       // 700ms 내 시작 안하면 다음 음성
     };
-    try{ ss.cancel(); }catch(e){}
-    ss.speak(build()); try{ ss.resume(); }catch(e){}  // resume 킥(멈춘 엔진 깨움)
-    setTimeout(()=>{                                   // 350ms 내 시작 안 하면 1회 재시도
-      if(!started && !retried){ retried=true; try{ss.cancel();}catch(e){} ss.speak(build()); try{ss.resume();}catch(e){} }
-    },350);
-    ka=setInterval(()=>{ if(!ss.speaking){clearInterval(ka);ka=null;return;} try{ss.resume();}catch(e){} },5000); // 장문 끊김+멈춤 방지
+    tryNext();
+    ka=setInterval(()=>{ if(started && !ss.speaking){clearInterval(ka);ka=null;return;} try{ss.resume();}catch(e){} },5000);
   });
 }
 // 음성목록 미리 로드 (Chrome은 첫 호출 시 비어있음)
@@ -497,22 +514,11 @@ $("#skipBtn").addEventListener("click", ()=>{
 });
 $("#restartBtn").addEventListener("click", start);
 $("#ttsTest").addEventListener("click", ()=>{
-  const ss=window.speechSynthesis;
-  const v=pickVoice();
-  const u=new SpeechSynthesisUtterance('Test, one two three, Cheongju tower.');
-  u.lang='en-US'; u.rate=0.95; if(v) u.voice=v;
-  window._u=u;   // GC 방지
-  u.onstart=()=>{ modeNoteEl.textContent='▶ 시작됨 voice='+(v?v.name:'default'); };
-  u.onerror=(e)=>{ modeNoteEl.textContent='⚠ error='+e.error; };
-  u.onend=()=>{ modeNoteEl.textContent+=' ✓끝'; };
-  let started=false;
-  u.addEventListener('start',()=>{started=true;});
-  try{ss.cancel();}catch(e){}
-  ss.speak(u); try{ss.resume();}catch(e){}
-  setTimeout(()=>{
-    ss.resume();
-    modeNoteEl.textContent='resume후 started='+started+' speaking='+ss.speaking+' voice='+(v?v.name:'default');
-  },500);
+  window._spokeVoice=null;
+  modeNoteEl.textContent='후보: '+voiceCandidates().map(v=>v?v.name:'기본').slice(0,5).join(' → ');
+  speak('Test, one two three, Cheongju tower.').then(()=>{
+    modeNoteEl.textContent+=' | 실제발화='+(window._spokeVoice||'실패(무음)');
+  });
 });
 $("#atisBtn").addEventListener("click", ()=>{
   const t=atisText(VARS);
