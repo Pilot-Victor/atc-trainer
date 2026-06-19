@@ -221,6 +221,23 @@ if (SR){ recog = new SR(); recog.lang="en-US"; recog.interimResults=true; recog.
 // 음성 입력 모드: 'tap'(기본) | 'speech'(Web Speech) | 'whisper'
 let inputMode = SR ? 'speech' : 'tap';
 
+/* 표시는 그대로, 음성출력만 항공 표준 포네틱으로 변환 */
+const NATO={A:'Alpha',B:'Bravo',C:'Charlie',D:'Delta',E:'Echo',F:'Foxtrot',G:'Golf',H:'Hotel',I:'India',J:'Juliet',K:'Kilo',L:'Lima',M:'Mike',N:'November',O:'Oscar',P:'Papa',Q:'Quebec',R:'Romeo',S:'Sierra',T:'Tango',U:'Uniform',V:'Victor',W:'Whiskey',X:'Xray',Y:'Yankee',Z:'Zulu'};
+const DIGIT={'0':'zero','1':'one','2':'two','3':'three','4':'four','5':'five','6':'six','7':'seven','8':'eight','9':'niner'};
+const SIDE={L:'left',R:'right',C:'center'};
+const sd = s => s.split('').map(c=>DIGIT[c]||c).join(' ');   // 숫자 개별 발화 (9=niner)
+function toSpeech(t){
+  t = t.replace(/KVN\s*1138/g, 'Korea Aviation one one three eight');  // 콜사인 고정
+  t = t.replace(/\bKVN\b/g, 'Korea Aviation');
+  t = t.replace(/\b(\d{2})([LRC])\b/g, (m,d,s)=> sd(d)+' '+SIDE[s]);    // 활주로: 24R→two four right
+  t = t.replace(/\b([A-Z])(\d)\b/g, (m,L,d)=> (NATO[L]||L)+' '+DIGIT[d]); // 유도로: E2→Echo two
+  t = t.replace(/altimeter\s+(\d+)\.(\d+)/gi, (m,a,b)=> 'altimeter '+sd(a+b)); // 29.92→two niner niner two
+  t = t.replace(/(\d+)\.(\d+)\s*inches/gi, (m,a,b)=> sd(a+b)+' inches');
+  t = t.replace(/(\d{3,4})\s*hectopascal/gi, (m,n)=> sd(n)+' hectopascal');
+  t = t.replace(/\b([A-Z])\b/g, (m,L)=> NATO[L]||L);                    // 남은 단독 대문자(정보코드 등)
+  return t;
+}
+
 function speak(text){
   return new Promise(res=>{
     if (!window.speechSynthesis){ res(); return; }
@@ -298,7 +315,7 @@ async function run(){
   const text=applyVars(step.text,VARS);
   if (step.who==='atc'){
     hintBox.style.display="none"; statusEl.textContent="ATC 송신 중…";
-    addMsg('atc',text); await speak(text);
+    addMsg('atc',text); await speak(toSpeech(text));
     idx++; setProgress(); run();
   } else {
     hintBox.style.display="block";
@@ -372,7 +389,7 @@ $("#restartBtn").addEventListener("click", start);
 $("#atisBtn").addEventListener("click", ()=>{
   const t=atisText(VARS);
   if (atisEl.style.display==="block"){ atisEl.style.display="none"; }
-  else { atisEl.textContent=t; atisEl.style.display="block"; speak(t); }
+  else { atisEl.textContent=t; atisEl.style.display="block"; speak(toSpeech(t)); }
 });
 
 /* ---- Whisper 모델 켜기 ---- */
