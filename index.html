@@ -499,12 +499,11 @@ $("#ttsTest").addEventListener("click", ()=>{
   const u=new SpeechSynthesisUtterance('Test, one two three, Cheongju tower.');
   u.lang='en-US'; u.rate=0.95; if(v) u.voice=v;
   window._u=u;   // GC 방지
-  u.onstart=()=>{ modeNoteEl.textContent='▶ 발화 시작됨 · voice='+(v?v.name:'default')+' · paused='+ss.paused; };
-  u.onerror=(e)=>{ modeNoteEl.textContent='⚠ error='+e.error+' · voice='+(v?v.name:'default'); };
-  u.onend=()=>{ modeNoteEl.textContent+=' · ✓끝'; };
-  ss.cancel(); ss.resume();
-  setTimeout(()=>{ ss.speak(u); ss.resume(); }, 100);
-  modeNoteEl.textContent='요청함 · speaking='+ss.speaking+' · paused='+ss.paused+' · voice='+(v?v.name:'default');
+  u.onstart=()=>{ modeNoteEl.textContent='▶ 시작됨 voice='+(v?v.name:'default'); };
+  u.onerror=(e)=>{ modeNoteEl.textContent='⚠ error='+e.error; };
+  u.onend=()=>{ modeNoteEl.textContent+=' ✓끝'; };
+  ss.speak(u);   // 클릭(제스처) 안에서 동기 호출, cancel/타임아웃 없음
+  modeNoteEl.textContent='호출직후 speaking='+ss.speaking+' pending='+ss.pending+' voice='+(v?v.name:'default');
 });
 $("#atisBtn").addEventListener("click", ()=>{
   const t=atisText(VARS);
